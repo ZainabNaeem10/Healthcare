@@ -1,23 +1,18 @@
 const nodemailer = require("nodemailer");
 
 exports.sendEmail = async (to, subject, text) => {
-  const testAccount = await nodemailer.createTestAccount();
-
   const transporter = nodemailer.createTransport({
-    host: "smtp.ethereal.email",
-    port: 587,
+    service: "gmail",
     auth: {
-      user: testAccount.user,
-      pass: testAccount.pass
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
     }
   });
 
-  const info = await transporter.sendMail({
-    from: '"Healthcare App" <no-reply@healthcare.com>',
+  await transporter.sendMail({
+    from: `"Healthcare App" <${process.env.EMAIL_USER}>`,
     to,
     subject,
     text
   });
-
-  console.log("Email Preview URL:", nodemailer.getTestMessageUrl(info));
 };
