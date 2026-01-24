@@ -7,64 +7,114 @@ const User = require("../models/User");
 const { verifyToken, authorizeRoles } = require("../middleware/auth");
 const { generatePrescriptionPDF } = require("../utils/pdf");
 const path = require("path");
+const fs = require("fs");
+const { sendEmail } = require("../utils/email");
 
 // GET: Doctor appointments
-router.get("/appointments", verifyToken, authorizeRoles("DOCTOR"), async (req, res) => {
-  try {
-    // Populate patient details
-    const doctor = await Doctor.findOne({ userId: req.user.userId });
-    const appointments = await Appointment.find({ doctorId: doctor._id })
-      .populate("patientId", "name email")
-      .sort({ date: 1, startTime: 1 });
+router.get(
+  "/appointments",
+  verifyToken,
+  authorizeRoles("DOCTOR"),
+  async (req, res) => {
+    try {
+      const doctor = await Doctor.findOne({ userId: req.user.userId });
 
-    res.status(200).json(appointments);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+      const appointments = await Appointment.find({ doctorId: doctor._id })
+        .populate("patientId", "name email")
+        .sort({ date: 1, startTime: 1 });
+
+      res.status(200).json(appointments);
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
   }
-});
+);
 
-// POST: Create prescription + generate PDF
-router.post("/prescriptions", verifyToken, authorizeRoles("DOCTOR"), async (req, res) => {
-  try {
-    const { patientId, medicines, notes } = req.body;
+// POST: Create prescription + PDF + Email
+router.post(
+  "/prescriptions",
+  verifyToken,
+  authorizeRoles("DOCTOR"),
+  async (req, res) => {
+    try {
+      const { patientId, medicines, notes } = req.body;
 
-    const doctor = await Doctor.findOne({ userId: req.user.userId });
-    const prescription = await Prescription.create({
-      patientId,
-      doctorId: doctor._id,
-      medicines,
-      notes
-    });
+      const doctor = await Doctor.findOne({ userId: req.user.userId })
+        .populate("userId", "name email");
 
-    // Generate PDF and save on server
-    const filePath = path.join(__dirname, `../prescriptions/prescription_${prescription._id}.pdf`);
-    generatePrescriptionPDF(prescription, filePath);
+      const patient = await User.findById(patientId);
 
-    // Optional: send email to patient with info
-    const patient = await User.findById(patientId);
-    const { sendEmail } = require("../utils/email");
-    sendEmail(patient.email, "New Prescription Created", `A new prescription has been created for you.`);
+      const prescription = await Prescription.create({
+        patientId,
+        doctorId: doctor._id,
+        medicines,
+        notes
+      });
 
-    res.status(201).json({ prescription, pdfPath: filePath });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+      const prescriptionsDir = path.join(__dirname, "../prescriptions");
+      if (!fs.existsSync(prescriptionsDir)) {
+        fs.mkdirSync(prescriptionsDir, { recursive: true });
+      }
+
+      const filePath = path.join(
+        prescriptionsDir,
+        `prescription_${prescription._id}.pdf`
+      );
+
+      await generatePrescriptionPDF(
+        {
+          patientName: patient.name,
+          doctorName: doctor.userId.name,
+          specialization: doctor.specialization,
+          medicines,
+          notes
+        },
+        filePath
+      );
+
+      // Email (safe)
+      try {
+        await sendEmail(
+          patient.email,
+          "New Prescription Created",
+          "Your prescription has been created. Please log in to view it."
+        );
+      } catch (emailErr) {
+        console.error("Email failed:", emailErr.message);
+      }
+
+      res.status(201).json({
+        message: "Prescription created successfully",
+        prescription,
+        pdfPath: filePath
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: err.message });
+    }
   }
-});
+);
 
-// PUT: Update schedule/availability
-router.put("/schedule", verifyToken, authorizeRoles("DOCTOR"), async (req, res) => {
-  try {
-    const { availability } = req.body;
-    const doctor = await Doctor.findOneAndUpdate(
-      { userId: req.user.userId },
-      { availability },
-      { new: true }
-    );
+// PUT: Update availability
+router.put(
+  "/schedule",
+  verifyToken,
+  authorizeRoles("DOCTOR"),
+  async (req, res) => {
+    try {
+      const { availability } = req.body;
 
-    res.status(200).json(doctor);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+      const doctor = await Doctor.findOneAndUpdate(
+        { userId: req.user.userId },
+        { availability },
+        { new: true }
+      );
+
+      res.status(200).json(doctor);
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
   }
-});
+);
 
 module.exports = router;
