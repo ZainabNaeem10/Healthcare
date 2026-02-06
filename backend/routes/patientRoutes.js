@@ -75,7 +75,11 @@ router.post(
         console.error("Email failed:", err.message);
       }
 
-      res.status(201).json(appointment);
+      res.status(201).json({
+  message: "Appointment booked successfully",
+  appointment
+});
+
     } catch (err) {
       res.status(500).json({ message: err.message });
     }
