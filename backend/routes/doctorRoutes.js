@@ -44,78 +44,122 @@ router.post(
   authorizeRoles("DOCTOR"),
   async (req, res) => {
     try {
+      console.log("🔵 /prescriptions HIT");
+      console.log("REQ BODY 👉", req.body);
+
       const { appointmentId, patientId, medicines, notes } = req.body;
 
+      console.log("APPOINTMENT ID 👉", appointmentId);
+      console.log("PATIENT ID 👉", patientId);
+
       if (!appointmentId || !patientId) {
-        return res.status(400).json({ message: "Missing appointmentId or patientId" });
+        console.log("❌ MISSING appointmentId or patientId");
+        return res.status(400).json({
+          message: "appointmentId or patientId missing"
+        });
       }
 
       const doctor = await Doctor.findOne({ userId: req.user.userId })
         .populate("userId", "name email");
 
       if (!doctor) {
+        console.log("❌ DOCTOR NOT FOUND");
         return res.status(404).json({ message: "Doctor not found" });
       }
 
+      console.log("DOCTOR FOUND 👉", doctor._id);
+
       const patient = await User.findById(patientId);
       if (!patient) {
+        console.log("❌ PATIENT NOT FOUND");
         return res.status(404).json({ message: "Patient not found" });
       }
 
-      // ✅ Generate PDF FIRST
-      const pdfBuffer = await generatePrescriptionPDF({
-        patientName: patient.name,
-        doctorName: doctor.userId.name,
-        specialization: doctor.specialization,
-        medicines,
-        notes
-      });
+      console.log("PATIENT FOUND 👉", patient._id);
 
-      // ✅ Upload to Cloudinary
-      const result = await new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-          { resource_type: "raw", folder: "prescriptions" },
-          (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          }
-        );
+      // ---------- PDF GENERATION ----------
+      let pdfBuffer;
+      try {
+        pdfBuffer = await generatePrescriptionPDF({
+          patientName: patient.name,
+          doctorName: doctor.userId.name,
+          specialization: doctor.specialization,
+          medicines,
+          notes
+        });
+        console.log("✅ PDF GENERATED (buffer length):", pdfBuffer.length);
+      } catch (pdfErr) {
+        console.error("❌ PDF GENERATION ERROR 👉", pdfErr);
+        return res.status(500).json({ message: "PDF generation failed" });
+      }
 
-        streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
-      });
+      // ---------- CLOUDINARY UPLOAD ----------
+      let uploadResult;
+      try {
+        uploadResult = await new Promise((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+            { resource_type: "raw", folder: "prescriptions" },
+            (error, result) => {
+              if (error) reject(error);
+              else resolve(result);
+            }
+          );
 
-      // ✅ NOW create prescription (pdfUrl guaranteed)
+          streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
+        });
+
+        console.log("✅ CLOUDINARY UPLOAD SUCCESS");
+        console.log("PDF URL 👉", uploadResult.secure_url);
+
+      } catch (cloudErr) {
+        console.error("❌ CLOUDINARY ERROR 👉", cloudErr);
+        return res.status(500).json({ message: "Cloudinary upload failed" });
+      }
+
+      // ---------- CREATE PRESCRIPTION ----------
       const prescription = await Prescription.create({
         patientId,
         doctorId: doctor._id,
         medicines,
         notes,
-        pdfUrl: result.secure_url
+        pdfUrl: uploadResult.secure_url
       });
 
-      // ✅ Mark appointment completed (by ID — correct)
-      await Appointment.findByIdAndUpdate(appointmentId, {
-        status: "COMPLETED"
-      });
+      console.log("✅ PRESCRIPTION SAVED 👉", prescription._id);
 
-      // ✅ Email stays
-      await sendEmail(
-        patient.email,
-        "New Prescription Created",
-        `Your prescription is ready.\nDownload: ${result.secure_url}`
+      // ---------- UPDATE APPOINTMENT ----------
+      const updatedAppointment = await Appointment.findByIdAndUpdate(
+        appointmentId,
+        { status: "COMPLETED" },
+        { new: true }
       );
 
-      res.status(201).json({
+      console.log("APPOINTMENT UPDATED 👉", updatedAppointment?._id);
+
+      // ---------- EMAIL ----------
+      try {
+        await sendEmail(
+          patient.email,
+          "New Prescription Created",
+          `Your prescription is ready.\nDownload: ${uploadResult.secure_url}`
+        );
+        console.log("✅ EMAIL SENT");
+      } catch (emailErr) {
+        console.error("⚠️ EMAIL FAILED 👉", emailErr.message);
+      }
+
+      return res.status(201).json({
         message: "Prescription created successfully",
         prescription
       });
 
     } catch (err) {
-      console.error("CREATE PRESCRIPTION ERROR 👉", err);
-      res.status(500).json({ message: err.message });
+      console.error("🔥 UNHANDLED ERROR 👉", err);
+      return res.status(500).json({ message: err.message });
     }
   }
 );
+
 
 
 // PUT: Mark prescription as downloaded
