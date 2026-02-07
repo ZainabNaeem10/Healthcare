@@ -6,11 +6,11 @@ const Doctor = require("../models/Doctor");
 const User = require("../models/User");
 const { verifyToken, authorizeRoles } = require("../middleware/auth");
 const { generatePrescriptionPDF } = require("../utils/pdf");
-const cloudinary = require("../utils/cloudinary"); // add cloudinary config
+const cloudinary = require("../utils/cloudinary"); // your cloudinary config
 const streamifier = require("streamifier");
 const { sendEmail } = require("../utils/email");
 
-// GET: Doctor appointments (only active ones)
+// GET: Doctor appointments (only active)
 router.get(
   "/appointments",
   verifyToken,
@@ -18,7 +18,6 @@ router.get(
   async (req, res) => {
     try {
       const doctor = await Doctor.findOne({ userId: req.user.userId });
-
       if (!doctor)
         return res.status(404).json({ message: "Doctor profile not found" });
 
@@ -72,38 +71,39 @@ router.post(
         notes,
       });
 
-      // Upload PDF buffer to Cloudinary (or Railway storage)
+      // Upload PDF buffer to Cloudinary
       const uploadStream = cloudinary.uploader.upload_stream(
         { resource_type: "raw", folder: "prescriptions" },
-        async (error, result) => {
+        function (error, result) { // ❌ no async here
           if (error) return res.status(500).json({ message: error.message });
 
           // Save PDF URL to prescription
           prescription.pdfUrl = result.secure_url;
-          await prescription.save();
+          prescription.save()
+            .then(async () => {
+              // Mark appointment as COMPLETED
+              await Appointment.findOneAndUpdate(
+                { patientId, doctorId: doctor._id, status: "CONFIRMED" },
+                { status: "COMPLETED" }
+              );
 
-          // Mark appointment as COMPLETED
-          await Appointment.findOneAndUpdate(
-            { patientId, doctorId: doctor._id, status: "CONFIRMED" },
-            { status: "COMPLETED" }
-          );
+              // Send email to patient
+              try {
+                await sendEmail(
+                  patient.email,
+                  "New Prescription Created",
+                  `Your prescription has been created. Download it here: ${result.secure_url}`
+                );
+              } catch (emailErr) {
+                console.error("Email failed:", emailErr.message);
+              }
 
-          // Send email to patient
-          try {
-            await sendEmail(
-              patient.email,
-              "New Prescription Created",
-              `Your prescription has been created. Download it here: ${result.secure_url}`
-            );
-          } catch (emailErr) {
-            console.error("Email failed:", emailErr.message);
-          }
-
-          res.status(201).json({
-            message: "Prescription created successfully",
-            prescription,
-            pdfUrl: result.secure_url,
-          });
+              res.status(201).json({
+                message: "Prescription created successfully",
+                prescription,
+                pdfUrl: result.secure_url,
+              });
+            });
         }
       );
 
@@ -113,8 +113,10 @@ router.post(
       res.status(500).json({ message: err.message });
     }
   }
+);
 
-  router.put(
+// PUT: Mark prescription as downloaded
+router.put(
   "/prescriptions/:id/download",
   verifyToken,
   authorizeRoles("PATIENT"),
@@ -131,7 +133,6 @@ router.post(
     }
   }
 );
-);
 
 // PUT: Update availability
 router.put(
@@ -141,13 +142,11 @@ router.put(
   async (req, res) => {
     try {
       const { availability } = req.body;
-
       const doctor = await Doctor.findOneAndUpdate(
         { userId: req.user.userId },
         { availability },
         { new: true }
       );
-
       res.status(200).json(doctor);
     } catch (err) {
       res.status(500).json({ message: err.message });
