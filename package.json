@@ -1,0 +1,10 @@
+{
+  "name": "healthcare-project",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "backend": "cd backend && node server.js",
+    "frontend": "cd frontend && npm start"
+  }
+}
