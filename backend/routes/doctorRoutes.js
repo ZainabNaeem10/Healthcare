@@ -19,12 +19,22 @@ router.get(
     try {
       const doctor = await Doctor.findOne({ userId: req.user.userId });
 
-      const appointments = await Appointment.find({ doctorId: doctor._id })
+      // 🔴 IMPORTANT GUARD (FIX)
+      if (!doctor) {
+        return res.status(404).json({
+          message: "Doctor profile not found. Please contact admin."
+        });
+      }
+
+      const appointments = await Appointment.find({
+        doctorId: doctor._id
+      })
         .populate("patientId", "name email")
         .sort({ date: 1, startTime: 1 });
 
       res.status(200).json(appointments);
     } catch (err) {
+      console.error(err);
       res.status(500).json({ message: err.message });
     }
   }
