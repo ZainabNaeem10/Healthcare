@@ -100,7 +100,12 @@ router.get(
         populate: { path: "userId", select: "name email" }
       });
 
-      res.status(200).json(prescriptions);
+      res.status(201).json({
+  message: "Prescription created successfully",
+  prescription,
+  pdfPath: `/prescriptions/prescription_${prescription._id}.pdf` // relative URL
+});
+
     } catch (err) {
       res.status(500).json({ message: err.message });
     }
