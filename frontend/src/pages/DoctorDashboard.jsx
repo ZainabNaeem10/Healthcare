@@ -38,6 +38,7 @@ export default function DoctorDashboard() {
       const res = await api.post(
         "/api/doctor/prescriptions",
         {
+          appointmentId: prescription.appointmentId,
           patientId: prescription.patientId,
           medicines: prescription.medicines,
           notes: prescription.notes
