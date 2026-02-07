@@ -37,6 +37,7 @@ router.get(
 );
 
 // POST: Create prescription + PDF + Upload + Mark appointment completed
+
 router.post(
   "/prescriptions",
   verifyToken,
@@ -49,61 +50,47 @@ router.post(
         "userId",
         "name email"
       );
-      if (!doctor) return res.status(404).json({ message: "Doctor not found" });
-
       const patient = await User.findById(patientId);
-      if (!patient) return res.status(404).json({ message: "Patient not found" });
 
-      // Create prescription record
       const prescription = await Prescription.create({
         patientId,
         doctorId: doctor._id,
         medicines,
-        notes,
+        notes
       });
 
-      // Generate PDF buffer
       const pdfBuffer = await generatePrescriptionPDF({
         patientName: patient.name,
         doctorName: doctor.userId.name,
         specialization: doctor.specialization,
         medicines,
-        notes,
+        notes
       });
 
-      // Upload PDF buffer to Cloudinary
       const uploadStream = cloudinary.uploader.upload_stream(
         { resource_type: "raw", folder: "prescriptions" },
-        function (error, result) { // ❌ no async here
+        async (error, result) => {
           if (error) return res.status(500).json({ message: error.message });
 
-          // Save PDF URL to prescription
           prescription.pdfUrl = result.secure_url;
-          prescription.save()
-            .then(async () => {
-              // Mark appointment as COMPLETED
-              await Appointment.findOneAndUpdate(
-                { patientId, doctorId: doctor._id, status: "CONFIRMED" },
-                { status: "COMPLETED" }
-              );
+          await prescription.save();
 
-              // Send email to patient
-              try {
-                await sendEmail(
-                  patient.email,
-                  "New Prescription Created",
-                  `Your prescription has been created. Download it here: ${result.secure_url}`
-                );
-              } catch (emailErr) {
-                console.error("Email failed:", emailErr.message);
-              }
+          await Appointment.findOneAndUpdate(
+            { patientId, doctorId: doctor._id, status: "CONFIRMED" },
+            { status: "COMPLETED" }
+          );
 
-              res.status(201).json({
-                message: "Prescription created successfully",
-                prescription,
-                pdfUrl: result.secure_url,
-              });
-            });
+          await sendEmail(
+            patient.email,
+            "New Prescription Created",
+            `Your prescription has been created. Download here: ${result.secure_url}`
+          );
+
+          res.status(201).json({
+            message: "Prescription created successfully",
+            prescription,
+            pdfUrl: result.secure_url
+          });
         }
       );
 
@@ -114,6 +101,7 @@ router.post(
     }
   }
 );
+
 
 // PUT: Mark prescription as downloaded
 router.put(
