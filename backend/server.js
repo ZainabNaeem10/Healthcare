@@ -9,7 +9,13 @@ const patientRoutes = require("./routes/patientRoutes");
 const doctorRoutes = require("./routes/doctorRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const path = require("path");
-const express = require("express");
+
+
+
+
+const app = express();
+app.use(cors());
+app.use(express.json());
 
 // Serve prescription PDFs as static files
 app.use(
@@ -17,10 +23,6 @@ app.use(
   express.static(path.join(__dirname, "prescriptions"))
 );
 
-
-const app = express();
-app.use(cors());
-app.use(express.json());
 
 // Routes
 app.use("/api/auth", authRoutes);
