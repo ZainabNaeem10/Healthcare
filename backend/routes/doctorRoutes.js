@@ -113,6 +113,24 @@ router.post(
       res.status(500).json({ message: err.message });
     }
   }
+
+  router.put(
+  "/prescriptions/:id/download",
+  verifyToken,
+  authorizeRoles("PATIENT"),
+  async (req, res) => {
+    try {
+      const prescription = await Prescription.findByIdAndUpdate(
+        req.params.id,
+        { downloaded: true },
+        { new: true }
+      );
+      res.status(200).json({ message: "Prescription marked as downloaded" });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  }
+);
 );
 
 // PUT: Update availability
