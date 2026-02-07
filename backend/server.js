@@ -8,6 +8,15 @@ const authRoutes = require("./routes/authRoutes");
 const patientRoutes = require("./routes/patientRoutes");
 const doctorRoutes = require("./routes/doctorRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const path = require("path");
+const express = require("express");
+
+// Serve prescription PDFs as static files
+app.use(
+  "/prescriptions",
+  express.static(path.join(__dirname, "prescriptions"))
+);
+
 
 const app = express();
 app.use(cors());
