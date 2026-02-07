@@ -94,22 +94,20 @@ router.get(
   async (req, res) => {
     try {
       const prescriptions = await Prescription.find({
-        patientId: req.user.userId
+        patientId: req.user.userId,
+        downloaded: { $ne: true } // Only undownloaded prescriptions
       }).populate({
         path: "doctorId",
         populate: { path: "userId", select: "name email" }
       });
 
-      res.status(201).json({
-  message: "Prescription created successfully",
-  prescription,
-  pdfPath: `/prescriptions/prescription_${prescription._id}.pdf` // relative URL
-});
-
+      res.status(200).json(prescriptions);
     } catch (err) {
+      console.error(err);
       res.status(500).json({ message: err.message });
     }
   }
 );
+
 
 module.exports = router;
