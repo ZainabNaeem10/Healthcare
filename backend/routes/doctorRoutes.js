@@ -44,16 +44,10 @@ router.post(
   authorizeRoles("DOCTOR"),
   async (req, res) => {
     try {
-      console.log("🔵 /prescriptions HIT");
       console.log("REQ BODY 👉", req.body);
 
       const { appointmentId, patientId, medicines, notes } = req.body;
-
-      console.log("APPOINTMENT ID 👉", appointmentId);
-      console.log("PATIENT ID 👉", patientId);
-
       if (!appointmentId || !patientId) {
-        console.log("❌ MISSING appointmentId or patientId");
         return res.status(400).json({
           message: "appointmentId or patientId missing"
         });
@@ -63,19 +57,13 @@ router.post(
         .populate("userId", "name email");
 
       if (!doctor) {
-        console.log("❌ DOCTOR NOT FOUND");
         return res.status(404).json({ message: "Doctor not found" });
       }
 
-      console.log("DOCTOR FOUND 👉", doctor._id);
-
       const patient = await User.findById(patientId);
       if (!patient) {
-        console.log("❌ PATIENT NOT FOUND");
         return res.status(404).json({ message: "Patient not found" });
       }
-
-      console.log("PATIENT FOUND 👉", patient._id);
 
       // ---------- PDF GENERATION ----------
       let pdfBuffer;
@@ -87,9 +75,7 @@ router.post(
           medicines,
           notes
         });
-        console.log("✅ PDF GENERATED (buffer length):", pdfBuffer.length);
       } catch (pdfErr) {
-        console.error("❌ PDF GENERATION ERROR 👉", pdfErr);
         return res.status(500).json({ message: "PDF generation failed" });
       }
 
@@ -108,11 +94,7 @@ router.post(
           streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
         });
 
-        console.log("✅ CLOUDINARY UPLOAD SUCCESS");
-        console.log("PDF URL 👉", uploadResult.secure_url);
-
       } catch (cloudErr) {
-        console.error("❌ CLOUDINARY ERROR 👉", cloudErr);
         return res.status(500).json({ message: "Cloudinary upload failed" });
       }
 
@@ -125,16 +107,12 @@ router.post(
         pdfUrl: uploadResult.secure_url
       });
 
-      console.log("✅ PRESCRIPTION SAVED 👉", prescription._id);
-
       // ---------- UPDATE APPOINTMENT ----------
       const updatedAppointment = await Appointment.findByIdAndUpdate(
         appointmentId,
         { status: "COMPLETED" },
         { new: true }
       );
-
-      console.log("APPOINTMENT UPDATED 👉", updatedAppointment?._id);
 
       // ---------- EMAIL ----------
       try {
@@ -143,9 +121,7 @@ router.post(
           "New Prescription Created",
           `Your prescription is ready.\nDownload: ${uploadResult.secure_url}`
         );
-        console.log("✅ EMAIL SENT");
       } catch (emailErr) {
-        console.error("⚠️ EMAIL FAILED 👉", emailErr.message);
       }
 
       return res.status(201).json({
@@ -154,7 +130,6 @@ router.post(
       });
 
     } catch (err) {
-      console.error("🔥 UNHANDLED ERROR 👉", err);
       return res.status(500).json({ message: err.message });
     }
   }
