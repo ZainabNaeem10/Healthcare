@@ -10,7 +10,7 @@ const path = require("path");
 const fs = require("fs");
 const { sendEmail } = require("../utils/email");
 
-// GET: Doctor appointments
+// GET: Doctor appointments (only active ones)
 router.get(
   "/appointments",
   verifyToken,
@@ -19,15 +19,12 @@ router.get(
     try {
       const doctor = await Doctor.findOne({ userId: req.user.userId });
 
-      // 🔴 IMPORTANT GUARD (FIX)
-      if (!doctor) {
-        return res.status(404).json({
-          message: "Doctor profile not found. Please contact admin."
-        });
-      }
+      if (!doctor)
+        return res.status(404).json({ message: "Doctor profile not found" });
 
       const appointments = await Appointment.find({
-        doctorId: doctor._id
+        doctorId: doctor._id,
+        status: { $in: ["PENDING", "CONFIRMED"] }
       })
         .populate("patientId", "name email")
         .sort({ date: 1, startTime: 1 });
@@ -40,7 +37,7 @@ router.get(
   }
 );
 
-// POST: Create prescription + PDF + Email
+// POST: Create prescription + PDF + Email + Mark appointment completed
 router.post(
   "/prescriptions",
   verifyToken,
@@ -49,11 +46,14 @@ router.post(
     try {
       const { patientId, medicines, notes } = req.body;
 
-      const doctor = await Doctor.findOne({ userId: req.user.userId })
-        .populate("userId", "name email");
+      const doctor = await Doctor.findOne({ userId: req.user.userId }).populate(
+        "userId",
+        "name email"
+      );
 
       const patient = await User.findById(patientId);
 
+      // Create prescription
       const prescription = await Prescription.create({
         patientId,
         doctorId: doctor._id,
@@ -61,10 +61,9 @@ router.post(
         notes
       });
 
+      // Generate PDF
       const prescriptionsDir = path.join(__dirname, "../prescriptions");
-      if (!fs.existsSync(prescriptionsDir)) {
-        fs.mkdirSync(prescriptionsDir, { recursive: true });
-      }
+      if (!fs.existsSync(prescriptionsDir)) fs.mkdirSync(prescriptionsDir, { recursive: true });
 
       const filePath = path.join(
         prescriptionsDir,
@@ -82,7 +81,7 @@ router.post(
         filePath
       );
 
-      // Email (safe)
+      // Send email (safe)
       try {
         await sendEmail(
           patient.email,
@@ -92,6 +91,12 @@ router.post(
       } catch (emailErr) {
         console.error("Email failed:", emailErr.message);
       }
+
+      // ✅ Mark appointment as COMPLETED
+      await Appointment.findOneAndUpdate(
+        { patientId, doctorId: doctor._id, status: "CONFIRMED" },
+        { status: "COMPLETED" }
+      );
 
       res.status(201).json({
         message: "Prescription created successfully",
