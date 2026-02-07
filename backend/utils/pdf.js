@@ -1,49 +1,29 @@
+// utils/pdf.js
 const PDFDocument = require("pdfkit");
-const fs = require("fs");
 
-exports.generatePrescriptionPDF = (data, filePath) => {
+exports.generatePrescriptionPDF = (data) => {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ margin: 50 });
-      const stream = fs.createWriteStream(filePath);
+      const doc = new PDFDocument();
+      const buffers = [];
 
-      doc.pipe(stream);
-
-      // Title
-      doc
-        .fontSize(22)
-        .text("Medical Prescription", { align: "center" })
-        .moveDown(2);
-
-      // Patient & Doctor Info
-      doc.fontSize(14);
-      doc.text(`Patient Name: ${data.patientName}`);
-      doc.text(`Doctor Name: ${data.doctorName}`);
-      doc.text(`Specialization: ${data.specialization}`);
-      doc.text(`Date: ${new Date().toLocaleDateString()}`);
-      doc.moveDown();
-
-      // Medicines
-      doc.fontSize(16).text("Medicines", { underline: true });
-      doc.moveDown(0.5);
-
-      data.medicines.forEach((med, index) => {
-        doc.fontSize(13).text(
-          `${index + 1}. ${med.name} | ${med.dosage} | ${med.duration}`
-        );
+      doc.on("data", buffers.push.bind(buffers));
+      doc.on("end", () => {
+        const pdfBuffer = Buffer.concat(buffers);
+        resolve(pdfBuffer); // <-- return buffer instead of file path
       });
 
-      // Notes
-      if (data.notes) {
-        doc.moveDown();
-        doc.fontSize(16).text("Notes", { underline: true });
-        doc.fontSize(13).text(data.notes);
-      }
+      // PDF content
+      doc.fontSize(16).text(`Prescription for: ${data.patientName}`);
+      doc.fontSize(14).text(`Doctor: ${data.doctorName}`);
+      doc.text(`Specialization: ${data.specialization}`);
+      doc.text("Medicines:");
+      data.medicines.forEach((med, i) => {
+        doc.text(`${i + 1}. ${med.name} - ${med.dosage} - ${med.duration}`);
+      });
+      doc.text(`Notes: ${data.notes || "None"}`);
 
       doc.end();
-
-      stream.on("finish", resolve);
-      stream.on("error", reject);
     } catch (err) {
       reject(err);
     }

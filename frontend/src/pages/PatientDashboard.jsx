@@ -5,227 +5,105 @@ export default function PatientDashboard() {
   const [doctors, setDoctors] = useState([]);
   const [prescriptions, setPrescriptions] = useState([]);
   const [specialization, setSpecialization] = useState("");
-
-  const [booking, setBooking] = useState({
-    doctorId: "",
-    date: "",
-    startTime: "",
-    endTime: ""
-  });
-
+  const [booking, setBooking] = useState({ doctorId: "", date: "", startTime: "", endTime: "" });
   const [bookingMessage, setBookingMessage] = useState("");
   const [searchMessage, setSearchMessage] = useState("");
   const [error, setError] = useState("");
-  const [hasSearched, setHasSearched] = useState(false);
-  const [successPrescription, setSuccessPrescription] = useState(null);
+  const [successPrescription, setSuccessPrescription] = useState("");
 
-  // ---------------- FETCH DOCTORS ----------------
+  // Fetch doctors
   const fetchDoctors = async (specialization) => {
     try {
-      setError("");
-      setSearchMessage("");
-      setHasSearched(true);
-
-      const user = JSON.parse(localStorage.getItem("user"));
-      if (!user || !user.token) {
-        setError("Please login again");
-        return;
-      }
-
-      const res = await fetch(
-        `${process.env.REACT_APP_BACKEND_URL}/api/patient/doctors?specialization=${specialization}`,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${user.token}`
-          }
-        }
-      );
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to fetch doctors");
-
-      setDoctors(data);
-
-      if (data.length === 0) {
-        setSearchMessage("No doctors found for this specialization");
-      } else {
-        setSearchMessage("");
-      }
+      setError(""); setSearchMessage("");
+      const res = await api.get(`/api/patient/doctors?specialization=${specialization}`);
+      setDoctors(res.data);
+      if (res.data.length === 0) setSearchMessage("No doctors found");
     } catch (err) {
-      console.error("Fetch doctors error:", err.message);
-      setError(err.message);
+      console.error(err);
+      setError("Failed to fetch doctors");
     }
   };
 
-  // ---------------- FETCH PRESCRIPTIONS ----------------
+  // Fetch only undownloaded prescriptions
   const fetchPrescriptions = async () => {
     try {
-      const user = JSON.parse(localStorage.getItem("user"));
-      if (!user || !user.token) return;
-
-      const res = await api.get("/api/patient/prescriptions", {
-        headers: { Authorization: `Bearer ${user.token}` }
-      });
-      setPrescriptions(res.data);
+      const res = await api.get("/api/patient/prescriptions");
+      const undownloaded = res.data.filter(p => !p.downloaded);
+      setPrescriptions(undownloaded);
     } catch (err) {
-      console.error("Fetch prescriptions error:", err.message);
+      console.error(err);
       setError("Failed to load prescriptions");
     }
   };
 
-  // ---------------- BOOK APPOINTMENT ----------------
+  // Book appointment
   const bookAppointment = async () => {
-    setError("");
-    setBookingMessage("");
-
+    setError(""); setBookingMessage("");
     const { doctorId, date, startTime, endTime } = booking;
-
-    if (!doctorId) {
-      setError("Please select a doctor first");
-      return;
-    }
-
-    if (!date || !startTime || !endTime) {
-      setError("Please fill all appointment fields");
-      return;
-    }
-
-    if (endTime <= startTime) {
-      setError("End time must be after start time");
-      return;
-    }
+    if (!doctorId || !date || !startTime || !endTime) { setError("Fill all fields"); return; }
+    if (endTime <= startTime) { setError("End time must be after start time"); return; }
 
     try {
-      const user = JSON.parse(localStorage.getItem("user"));
-      if (!user || !user.token) {
-        setError("Please login again");
-        return;
-      }
-
-      const res = await fetch(
-        `${process.env.REACT_APP_BACKEND_URL}/api/patient/appointments`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${user.token}`
-          },
-          body: JSON.stringify({ doctorId, date, startTime, endTime })
-        }
-      );
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        setError(errorData.message || "Booking failed");
-        return;
-      }
-
-      const successData = await res.json();
-      setBookingMessage(`✅ ${successData.message}`);
+      const res = await api.post("/api/patient/appointments", booking);
+      setBookingMessage(`✅ ${res.data.message}`);
       setBooking({ doctorId: "", date: "", startTime: "", endTime: "" });
-
-      await fetchPrescriptions();
+      fetchPrescriptions();
     } catch (err) {
-      console.error("Booking error:", err.message);
-      setError(err.message || "Booking failed");
+      console.error(err);
+      setError("Booking failed");
     }
   };
 
-  // ---------------- DOWNLOAD PRESCRIPTION ----------------
-  const downloadPrescription = (prescription) => {
-    const link = document.createElement("a");
-    link.href = prescription.pdfPath;
-    link.download = `prescription_${prescription._id}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    // Remove from frontend after download
-    setPrescriptions((prev) =>
-      prev.filter((p) => p._id !== prescription._id)
-    );
-
-    setSuccessPrescription(
-      `✅ Appointment completed & prescription generated by Dr. ${prescription.doctorId.userId.name}`
-    );
+  // Download prescription
+  const downloadPrescription = async (p) => {
+    try {
+      window.open(p.pdfUrl, "_blank"); // open Cloudinary link
+      await api.put(`/api/doctor/prescriptions/${p._id}/download`); // mark downloaded
+      setPrescriptions(prev => prev.filter(pres => pres._id !== p._id));
+      setSuccessPrescription(`✅ Appointment completed & prescription generated by Dr. ${p.doctorId.userId.name}`);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to download prescription");
+    }
   };
 
-  useEffect(() => {
-    fetchPrescriptions();
-    // do NOT fetch doctors on initial load to prevent "no doctors found"
-  }, []);
+  useEffect(() => { fetchPrescriptions(); }, []);
 
   return (
     <div style={{ padding: 20 }}>
       <h2>👤 Patient Dashboard</h2>
-
-      {/* MESSAGES */}
       {error && <p style={{ color: "red" }}>{error}</p>}
-      {hasSearched && searchMessage && <p style={{ color: "blue" }}>{searchMessage}</p>}
-      {bookingMessage && <p style={{ color: "green", fontWeight: "bold" }}>{bookingMessage}</p>}
-      {successPrescription && <p style={{ color: "green", fontWeight: "bold" }}>{successPrescription}</p>}
+      {searchMessage && <p style={{ color: "blue" }}>{searchMessage}</p>}
+      {bookingMessage && <p style={{ color: "green" }}>{bookingMessage}</p>}
+      {successPrescription && <p style={{ color: "green" }}>{successPrescription}</p>}
 
-      {/* DOCTOR SEARCH */}
+      {/* Doctor Search */}
       <h3>🔍 Search Doctors</h3>
-      <input
-        placeholder="Specialization (e.g. Cardiology)"
-        value={specialization}
-        onChange={(e) => setSpecialization(e.target.value)}
-      />
+      <input placeholder="Specialization" value={specialization} onChange={(e) => setSpecialization(e.target.value)} />
       <button onClick={() => fetchDoctors(specialization)}>Search</button>
-
       <ul>
-        {doctors.map((doc) => (
+        {doctors.map(doc => (
           <li key={doc._id}>
             Dr. {doc.userId.name} ({doc.specialization})
-            <button
-              style={{ marginLeft: 10 }}
-              onClick={() => setBooking({ ...booking, doctorId: doc._id })}
-            >
-              Select
-            </button>
+            <button style={{ marginLeft: 10 }} onClick={() => setBooking({ ...booking, doctorId: doc._id })}>Select</button>
           </li>
         ))}
       </ul>
 
-      {/* BOOK APPOINTMENT */}
+      {/* Book Appointment */}
       <h3>📅 Book Appointment</h3>
-      <input
-        type="date"
-        value={booking.date}
-        onChange={(e) => setBooking({ ...booking, date: e.target.value })}
-      />
-      <input
-        type="time"
-        value={booking.startTime}
-        onChange={(e) => setBooking({ ...booking, startTime: e.target.value })}
-      />
-      <input
-        type="time"
-        value={booking.endTime}
-        onChange={(e) => setBooking({ ...booking, endTime: e.target.value })}
-      />
+      <input type="date" value={booking.date} onChange={(e) => setBooking({ ...booking, date: e.target.value })} />
+      <input type="time" value={booking.startTime} onChange={(e) => setBooking({ ...booking, startTime: e.target.value })} />
+      <input type="time" value={booking.endTime} onChange={(e) => setBooking({ ...booking, endTime: e.target.value })} />
+      <button disabled={!booking.doctorId} onClick={bookAppointment}>Book Appointment</button>
 
-      <button
-        disabled={!booking.doctorId}
-        onClick={bookAppointment}
-      >
-        Book Appointment
-      </button>
-
-      {/* PRESCRIPTIONS */}
+      {/* Prescriptions */}
       <h3>💊 Prescriptions</h3>
       <ul>
-        {prescriptions.map((p) => (
+        {prescriptions.map(p => (
           <li key={p._id}>
-            Doctor: {p.doctorId.userId.name}
-            <button
-              style={{ marginLeft: 10 }}
-              onClick={() => downloadPrescription(p)}
-            >
-              Download Prescription
-            </button>
+            Dr. {p.doctorId.userId.name}
+            <button style={{ marginLeft: 10 }} onClick={() => downloadPrescription(p)}>Download</button>
           </li>
         ))}
       </ul>
