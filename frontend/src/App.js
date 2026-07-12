@@ -16,7 +16,7 @@ function App() {
     <AuthProvider>
       <Router>
         <Routes>
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<Navigate to="/signup" replace />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/login" element={<Login />} />
 
@@ -47,7 +47,7 @@ function App() {
             }
           />
 
-          <Route path="*" element={<Navigate to="/login" />} />
+          <Route path="*" element={<Navigate to="/signup" />} />
         </Routes>
       </Router>
     </AuthProvider>
