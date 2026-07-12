@@ -16,8 +16,8 @@ function App() {
     <AuthProvider>
       <Router>
         <Routes>
-          <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/login" element={<Login />} />
 
           <Route
             path="/patient"
@@ -46,7 +46,7 @@ function App() {
             }
           />
 
-          <Route path="*" element={<Navigate to="/signup" />} />
+          <Route path="*" element={<Navigate to="/login" />} />
         </Routes>
       </Router>
     </AuthProvider>
